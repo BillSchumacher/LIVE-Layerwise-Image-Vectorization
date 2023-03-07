@@ -102,8 +102,12 @@ def from_svg_path(path_str, shape_to_canvas = torch.eye(3), force_close = False)
                 points.append((e.control.real, e.control.imag))
             elif isinstance(e, svgpathtools.CubicBezier):
                 num_control_points.append(2)
-                points.append((e.control1.real, e.control1.imag))
-                points.append((e.control2.real, e.control2.imag))
+                points.extend(
+                    (
+                        (e.control1.real, e.control1.imag),
+                        (e.control2.real, e.control2.imag),
+                    )
+                )
             elif isinstance(e, svgpathtools.Arc):
                 # Convert to Cubic curves
                 # https://www.joecridge.me/content/pdf/bezier-arcs.pdf
@@ -116,6 +120,7 @@ def from_svg_path(path_str, shape_to_canvas = torch.eye(3), force_close = False)
 
                 epsilon = 0.00001
                 debug = abs(e.delta) >= 90.0
+                first = False
                 while (sign * (stop - start) > epsilon):
                     arc_to_draw = stop - start
                     if arc_to_draw > 0.0:
@@ -154,16 +159,12 @@ def from_svg_path(path_str, shape_to_canvas = torch.eye(3), force_close = False)
                         points.append((cx + rx * math.cos(rot + start + arc_to_draw),
                                        cy + ry * math.sin(rot + start + arc_to_draw)))
                     start += arc_to_draw
-                    first = False
-            if i != len(subpath) - 1:
-                points.append((e.end.real, e.end.imag))
+            if i == len(subpath) - 1 and subpath.isclosed():
+                # Must end at the beginning of first segment
+                assert(e.end.real == points[0][0])
+                assert(e.end.imag == points[0][1])
             else:
-                if subpath.isclosed():
-                    # Must end at the beginning of first segment
-                    assert(e.end.real == points[0][0])
-                    assert(e.end.imag == points[0][1])
-                else:
-                    points.append((e.end.real, e.end.imag))
+                points.append((e.end.real, e.end.imag))
         points = torch.tensor(points)
         points = torch.cat((points, torch.ones([points.shape[0], 1])), dim = 1) @ torch.transpose(shape_to_canvas, 0, 1)
         points = points / points[:, 2:3]
